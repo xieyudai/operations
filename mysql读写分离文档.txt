@@ -264,6 +264,6 @@ mysql> select * from db_test.websites; //可以看到数据
 slave：
 mysql> select * from db_test.websites; //没有看到数据
 
-
+#文档结束
 
 
