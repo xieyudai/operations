@@ -1,0 +1,81 @@
+基础环境
+jdk版本：        jdk1.7.0_80
+tomcat版本：     apache-tomcat-7.0.67
+通过memcached共享session来做tomcat集群，需要对tomcat的server.xml，context.xml，catalina.sh做相关的配置
+上传相关的jar包：
+spymemcached-2.10.2.jar  reflectasm-1.01.jar  kryo-serializers-0.11.jar memcached-session-manager-1.7.0.jar 
+memcached-session-manager-tc7-1.7.0.jar  minlog-1.2.jar  msm-kryo-serializer-1.7.0.jar asm-3.2.jar
+kryo-1.04.jar  
+
+设置jdk环境
+cd /home/jutong/package
+tar -zxvf jdk-7u80-linux-x64.tar.gz 
+
+vim /etc/profile
+#for java
+export JAVA_HOME=/home/jutong/package/jdk1.7.0_80/
+export PATH=$JAVA_HOME/bin:$PATH
+export CLASSPATH=.:$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar
+重新加载环境变量
+source /etc/profile
+查看jdk是否生效
+java -version
+
+
+安装memcached
+yum -y install memcached
+
+/etc/init.d/memcached start
+
+
+安装tomcat
+解压源码包
+修改配置文件
+vim server.xml
+    <Executor name="tomcatThreadPool" namePrefix="catalina-exec-" maxIdleTime="60000" maxThreads="1000" minSpareThreads="20"/>
+
+
+
+    <Connector port="8001" redirectPort="6001" protocol="org.apache.coyote.http11.Http11Protocol" 
+                executor="tomcatThreadPool"
+                bufferSize="4096"
+                URIEncoding="UTF-8"
+                enableLookups="false"
+                acceptCount="100"
+                minSpareThreads="100"
+                maxSpareThreads="400" 
+                connectionTimeout="30000"
+                compression="on"
+                compressionMinSize="2048"
+                noCompressionUserAgents="gozilla,traviata"
+                compressableMimeType="text/html,text/xml,text/javascript,text/css,text/plain,application/json"
+    />
+
+	<Host name="localhost"  appBase="/home/appuser/webapps/samsung/frontend"
+            unpackWARs="true" autoDeploy="true"
+            xmlValidation="false" xmlNamespaceAware="false">
+			
+	<Context path="/TaxiManager" docBase="TaxiManager" reloadable="false" useHttpOnly="true" sessionCookiePath="/" sessionCookieName="tmSessionId"  
+	sessionCookieDomain=".chengchengda.com" />
+	
+vim context.xml
+
+<Context useHttpOnly="true" allowLinking="true" disableURLRewriting="true">
+
+    <Manager className="de.javakaffee.web.msm.MemcachedBackupSessionManager" 
+        sticky="true" 
+        memcachedNodes="n1:ip1:11211,n2:ip2:11211"
+        failoverNodes="n1"
+        operationTimeout="5000"
+        sessionBackupAsync= "false"
+        sessionBackupTimeout="5000"
+        requestUriIgnorePattern=".*\.(ico|png|gif|jpg|css|js)$"
+        transcoderFactoryClass="de.javakaffee.web.msm.serializer.kryo.KryoTranscoderFactory" />
+</Context>
+
+
+vim catalina.sh
+
+JAVA_OPTS="-server -Xms3g -Xmx3g -XX:PermSize=256m -XX:MaxPermSize=512m -XX:NewSize=256m -XX:MaxNewSize=256m"
+CATALINA_HOME="tomcat-node-dir"
+CATALINA_PID="$CATALINA_HOME/catalina.pid"
