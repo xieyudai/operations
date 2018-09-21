@@ -1,0 +1,269 @@
+实例参考文档
+http://blog.51cto.com/jacksoner/2084099
+
+基础环境
+mysql版本：  mysql-5.6.38
+db-master:   192.168.1.1
+db-slave:    192.168.1.2
+mysql-proxy  192.168.1.2
+
+编译安装mysql
+
+1.准备编译环境
+yum -y install wget gcc-c++ ncurses ncurses-devel cmake make perl bison openssl openssl-devel gcc* libxml2 libxml2-devel curl-devel libjpeg* libpng* freetype*
+
+2.上传源码，解压源码
+
+
+3.创建用户
+groupadd mysql
+useradd mysql -s /bin/nologin -M -g mysql
+
+4.新建mysql所需要的目录
+mkdir -p /home/jutong/software/mysql
+mkdir -p /home/databases/data/mysqldb
+
+5.安装mysql
+cd /home/jutong/package/mysql-5.6.38/
+cmake -DCMAKE_INSTALL_PREFIX=/home/jutong/software/mysql -DMYSQL_UNIX_ADDR=/home/jutong/software/mysql/mysql.sock -DDEFAULT_CHARSET=utf8 -DDEFAULT_COLLATION=utf8_general_ci -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_ARCHIVE_STORAGE_ENGINE=1 -DWITH_BLACKHOLE_STORAGE_ENGINE=1 -DMYSQL_DATADIR=/home/databases/data/mysqldb -DMYSQL_TCP_PORT=3306 -DENABLE_DOWNLOADS=1
+make
+make install
+
+6.修改权限
+chown -R mysql.mysql /home/jutong/software/mysql
+chown -R mysql.mysql /home/databases/data/mysqldb
+
+7.初始化mysql数据库
+cd /home/jutong/software/mysql/scripts/
+./mysql_install_db --basedir=/home/jutong/software/mysql --datadir=/home/databases/data/mysqldb --user=mysql
+
+8.复制mysql服务启动配置文件
+cp /home/jutong/software/mysql/support-files/my-default.cnf /etc/my.cnf
+修改配置文件按照88上，但是需要修改这几处
+datadir=/home/databases/data/mysqldb
+socket=/home/jutong/software/mysql/mysql.sock
+
+
+9.复制启动脚本
+cp support-files/mysql.server /etc/init.d/mysqld
+ 
+10. 加入mysql启动的环境变量
+vi /etc/profile
+export PATH=/home/jutong/software/mysql/bin:$PATH
+source /etc/profile
+
+11.启动mysql
+service mysqld start
+chkconfig mysqld on
+
+12.设置mysql用户root的密码
+mysqladmin -u root password 'sMzQ!F8!kDje'
+
+主从复制
+主库上192.168.1.1操作
+#vi /etc/my.cnf
+       [mysqld]
+       log-bin=mysql-bin   //[必须]启用二进制日志
+       server-id=129      //[必须]服务器唯一ID，默认是1，一般取IP最后一段
+/etc/init.d/mysqld restart
+
+创建同步用户并授权
+创建同步用户并设置密码
+mysql>create user repl@'%' IDENTIFIED BY 'replication';
+
+
+授权同步用户在从库上具有复制的权限
+mysql>grant replication slave, replication client on *.* to 'repl'@'192.168.1.2' identified by 'replication';
+
+重新加载授权
+mysql>flush privileges;
+
+查看主库状态
+mysql>show master status;   记住主库的日志文件以及ID
+
++------------------+----------+--------------+------------------+
+   | File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
+   +------------------+----------+--------------+------------------+
+   | mysql-bin.000004 |      308 |              |                  |
+   +------------------+----------+--------------+------------------+
+   1 row in set (0.00 sec)
+   注：执行完此步骤后不要再操作主服务器MYSQL，防止主服务器状态值变化
+
+从库上192.168.1.2操作：
+修改配置文件
+#vi /etc/my.cnf
+       [mysqld]
+       log-bin=mysql-bin   //启用二进制日志
+       server-id=130      //[必须是值要大于主库]
+进入控制台
+mysql>change master to master_host='192.168.1.1',master_user='repl',master_password='replication',master_log_file='mysql-bin.000004',master_log_pos=308;
+
+mysql>start slave;    //启动从服务器复制功能
+
+mysql>show slave status\G     验证主从状态
+*************************** 1. row ***************************
+
+              Slave_IO_State: Waiting for master to send event
+              Master_Host: 192.168.2.222  //主服务器地址
+              Master_User: mysync   //授权帐户名，尽量避免使用root
+              Master_Port: 3306    //数据库端口，部分版本没有此行
+              Connect_Retry: 60
+              Master_Log_File: mysql-bin.000004
+              Read_Master_Log_Pos: 600     //#同步读取二进制日志的位置，大于等于Exec_Master_Log_Pos
+              Relay_Log_File: ddte-relay-bin.000003
+              Relay_Log_Pos: 251
+              Relay_Master_Log_File: mysql-bin.000004
+              Slave_IO_Running: Yes    //此状态必须YES
+              Slave_SQL_Running: Yes     //此状态必须YES
+                    ......
+
+注：Slave_IO及Slave_SQL进程必须正常运行，即YES状态，否则都是错误的状态(如：其中一个NO均属错误)。
+
+
+mysql读写分离
+mysql-master  192.168.1.1
+mysql-slave   192.168.1.2
+mysql-proxy   192.168.1.2
+软件包
+lua-5.3.4.tar.gz
+mysql-proxy-0.8.5-linux-glibc2.3-x86-64bit.tar.gz
+
+前提条件：mysql主从同步确定成功了
+
+tar -zxvf lua-5.3.4.tar.gz -C /usr/local/src
+cd /usr/local/src/lua-5.3.4
+
+修改编译文件
+vim src/Makefile
+CFLAGS= -O2 -Wall -fPIC -Wextra -DLUA_COMPAT_5_2 $(SYSCFLAGS) $(MYCFLAGS)
+
+make linux
+make install
+
+tar -zxvf mysql-proxy-0.8.5-linux-glibc2.3-x86-64bit.tar.gz -C /home/jutong/software
+cd /home/jutong/software
+mv mysql-proxy-0.8.5-linux-glibc2.3 mysql-proxy
+cd mysql-proxy
+mkdir lua logs
+cp share/doc/mysql-proxy/rw-splitting.lua ./lua
+cp share/doc/mysql-proxy/admin-sql.lua ./lua
+
+修改启动脚本
+vim /etc/init.d/mysql-proxy
+
+#!/bin/sh
+# mysql-proxy This script starts and stops the mysql-proxy daemon
+#
+# chkconfig: - 78 30
+# processname: mysql-proxy
+# description: mysql-proxy is a proxy daemon to mysql
+# Source function library.
+. /etc/rc.d/init.d/functions
+#PROXY_PATH=/usr/local/bin
+PROXY_PATH=/home/jutong/software/mysql-proxy/bin/
+prog="mysql-proxy"
+# Source networking configuration.
+. /etc/sysconfig/network
+# Check that networking is up.
+#[ ${NETWORKING} == "no" ] && exit 0
+# Set default mysql-proxy configuration.
+PROXY_OPTIONS="--log-level=info --log-file=/home/jutong/software/mysql-proxy/logs/mysql-proxy.log --plugins=proxy -b 192.168.220.128:3306 -r 192.168.220.129:3306 --proxy-lua-script=/home/jutong/software/mysql-proxy/lua/rw-splitting.lua --plugins=admin --admin-username=root --admin-password=root1234 --admin-lua-script=/home/jutong/software/mysql-proxy/lua/admin-sql.lua "
+
+
+PROXY_PID=/home/jutong/software/mysql-proxy/mysql-proxy.pid
+# Source mysql-proxy configuration.
+
+if [ -f /etc/sysconfig/mysql-proxy ]; then
+
+        . /etc/sysconfig/mysql-proxy
+
+fi
+PATH=$PATH:/usr/bin:/usr/local/bin:$PROXY_PATH
+# By default it's all good
+RETVAL=0
+
+# See how we were called.
+case "$1" in
+  start)
+        # Start daemon.
+        echo -n $"Starting $prog: "
+        $NICELEVEL $PROXY_PATH/mysql-proxy $PROXY_OPTIONS --daemon --pid-file=$PROXY_PID --user=mysql
+        RETVAL=$?
+        echo
+        if [ $RETVAL = 0 ]; then
+                touch /var/lock/subsys/mysql-proxy
+        fi
+       ;;
+  stop)
+        # Stop daemons.
+        echo -n $"Stopping $prog: "
+        killproc $prog
+        RETVAL=$?
+        echo
+        if [ $RETVAL = 0 ]; then
+                rm -f /var/lock/subsys/mysql-proxy
+                rm -f $PROXY_PID
+        fi
+       ;;
+  restart)
+        $0 stop
+        sleep 3
+        $0 start
+       ;;
+  condrestart)
+       [ -e /var/lock/subsys/mysql-proxy ] && $0 restart
+      ;;
+  status)
+        status mysql-proxy
+        RETVAL=$?
+       ;;
+  *)
+        echo "Usage: $0 {start|stop|restart|status|condrestart}"
+        RETVAL=1
+       ;;
+esac
+exit $RETVAL
+
+vim /home/jutong/software/mysql-proxy/lua/rw-splitting.lua
+min_idle_connections = 1
+max_idle_connections = 1
+
+启动mysql-proxy
+/etc/init.d/mysql-proxy start
+
+
+测试读写分离效果
+创建用于读写分离的数据库连接用户
+登陆主数据库服务器192.168.1.1，通过命令行登录管理MySQL服务器
+
+mysql>  GRANT ALL ON *.* TO 'proxy'@'192.168.1.2' IDENTIFIED BY 'password';
+由于我们配置了主从复制功能，因此从数据库服务器192.168.1.2上已经同步此操作。
+在主库上创建库和表
+create database db_test default character set utf8 collate utf8_general_ci;
+use db_test;
+create table `websites`(`id` int(11) NOT NULL AUTO_INCREMENT,`name` char(20) NOT NULL DEFAULT '' COMMENT '站点名称',`url` varchar(255) NOT NULL DEFAULT '',PRIMARY KEY (`id`))ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8; 
+
+为了清晰的看到读写分离的效果，需要暂时关闭MySQL主从复制功能；线上是需要主从同步的，这里只是做实验测试，需要关闭
+登录从数据库服务器192.168.1.2
+关闭Slave同步进程
+mysql> stop slave;
+
+连接到mysql-proxy
+[root@centos7-67 ~]# mysql -uproxy -p'password' -P4040 -h192.168.1.2
+在一个库里的表中插入2条数据
+mysql>use db_test;
+mysql> insert into websites values ('2','souhu','www.souhu.com');
+mysql> insert into websites values ('3','qq','www.qq.com');
+
+
+
+验证：
+master:
+mysql> select * from db_test.websites; //可以看到数据
+
+slave：
+mysql> select * from db_test.websites; //没有看到数据
+
+
+
+
