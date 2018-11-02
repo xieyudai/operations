@@ -1,0 +1,59 @@
+编译安装mysql-5.6
+系统：centos-6.8
+源码包：cmake-3.8.2.tar.gz   mysql-5.6.38.tar.gz
+数据库安装目录：/usr/local/mysql
+数据库目录：/data/mysqldb
+
+1.准备编译环境
+yum -y install gcc gcc-c++ make autoconf libtool-ltdl-devel gd-devel freetype-devel libxml2-devel libjpeg-devel libpng-devel openssl-devel curl-devel bison patch unzip libmcrypt-devel libmhash-devel ncurses-devel sudo bzip2 flex libaio-devel
+
+2.安装cmake
+tar -zxvf cmake-3.8.2.tar.gz -C /usr/local/src
+cd /usr/local/src/cmake-3.8.2
+./bootstrap
+make 
+make install
+
+3.设置mysql用户和组
+groupadd mysql
+useradd mysql -s /bin/nologin -M -g mysql
+
+4.新建mysql所需要的目录
+mkdir -p /usr/local/mysql
+mkdir -p /data/mysqldb
+
+5.安装mysql
+tar -zxvf mysql-5.6.38.tar.gz -C /usr/local/src
+cd /usr/local/src/mysql-5.6.38
+cmake -DCMAKE_INSTALL_PREFIX=/usr/local/mysql/ -DMYSQL_UNIX_ADDR=/usr/local/mysql/mysql.sock -DDEFAULT_CHARSET=utf8 -DDEFAULT_COLLATION=utf8_general_ci -DWITH_EXTRA_CHARSETS=all -DWITH_MYISAM_STORAGE_ENGINE=1 -DWITH_INNOBASE_STORAGE_ENGINE=1 -DWITH_MEMORY_STORAGE_ENGINE=1 -DWITH_READLINE=1 -DWITH_INNODB_MEMCACHED=1 -DWITH_DEBUG=OFF -DWITH_ZLIB=bundled -DENABLED_LOCAL_INFILE=1 -DENABLED_PROFILING=ON -DMYSQL_MAINTAINER_MODE=OFF -DMYSQL_DATADIR=/data/mysqldb -DMYSQL_TCP_PORT=3306
+（若需要重新编译则只需要清除CMakeCache.txt  rm -rf CMakeCache.txt）
+make 
+make install
+
+6.修改权限
+chown -R mysql.mysql /usr/local/mysql
+chown -R mysql.mysql /data/mysqldb
+
+7.初始化mysql数据库
+cd /usr/local/mysql
+scripts/mysql_install_db --basedir=/usr/local/mysql --datadir=/data/mysqldb --user=mysql
+8.复制mysql服务启动配置文件
+cp /usr/local/mysql/support-files/my-default.cnf /etc/my.cnf
+
+9.复制启动脚本
+cp support-files/mysql.server /etc/init.d/mysqld
+ 
+10. 加入mysql启动的环境变量
+vi /etc/profile
+export PATH=/usr/local/mysql/bin:$PATH
+source /etc/profile
+
+11.启动mysql
+service mysqld start
+
+12.设置mysql用户root的密码
+mysqladmin -u root password '123456'
+
+13.设置mysql随系统启动
+chkconfig mysqld on
+
