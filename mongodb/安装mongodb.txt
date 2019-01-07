@@ -1,0 +1,103 @@
+系统版本： centos-6.8
+安装目录： /usr/local/mongodb
+数据目录： /databases/data/mongodb
+源码：     mongodb-linux-x86_64-3.4.0.tgz
+
+1.上传解压源码包
+tar -zcvf mongodb-linux-x86_64-3.4.0.tgz -C /usr/local/mongodb
+mv /usr/local/mongodb-linux-x86_64-3.4.0.tgz /usr/local/mongodb
+
+2.创建配置文件（简单的配置）
+vim /usr/local/mongodb/mongodb.conf
+dbpath=/databases/data/mongodb     
+logpath=/var/logs/mongodb_logs/mongodb.log
+maxConns=20000
+port=27017
+fork=true
+#auth=true
+（登录认证）
+
+3.设置环境变量
+vim /etc/profile
+#for mongodb
+export PATH=$PATH:/usr/local/mongodb/bin
+加载环境变量使之生效
+source /etc/profile
+
+4.启动mongodb
+/usr/local/mongodb/bin/mongod -f /usr/local/mongodb/mongodb.conf
+
+5.创建管理用户，授权并设置登录认证
+进入mongodb控制台
+mongo
+创建一个帐号，该账号需要有grant权限，即：账号管理的授权权限。注意一点，帐号是跟着库走的，所以在指定库里授权，必须也在指定库里验证(auth)
+use admin
+db.createUser({user: "root",pwd: "passwd",roles: [ { role: "root", db: "admin" } ]})
+认证用户
+use admin
+db.auth("root", "passwd")
+修改配置文件，将注释放开
+auth=true
+重启mongodb
+
+6.创建指定库，并给指定用户授权
+use db_test
+db.createUser({user: "u_test",pwd: "passwd",roles: [ { role: "dbOwner", db: "db_test" } ]})
+db.auth("jutonggeo", "passwd")
+
+7.登录认证
+mongo -u u_test -p 'passwd' 127.0.0.1:27017/db_test
+
+配置参数参考链接
+https://www.jianshu.com/p/ba63f6c5ad04
+https://www.cnblogs.com/zhoujinyi/p/3130231.html
+
+mongodb常用配置参数
+#usercenter replset master
+bind_ip=hadoop13
+
+#指定服务器监听的端口，默认是27017
+port=17813
+
+#是否是主
+#master = true
+
+#集群名字
+replSet=docdetection    #这个是创建副本集的方式,如果master指定了，这个地方不可以再指定
+
+#指定数据目录，默认是/data/db/。每个mongod进程都需要独立的目录
+#启动mongod时就会在数据目录中创建mongod.lock文件，防止其他mongod进程使用该数据目录。
+dbpath=/usr/local/mongodb/data/db
+
+#指定日志输出路径，如果不指定则会在终端输出。每次启动都会覆盖原来的日志，如果不想覆盖就要用--logappend选项
+logpath=/usr/local/mongodb/log/mongodb.log
+logappend=true
+
+#以守护进程的方式运行MongoDB
+fork=true
+
+#一个数据库一个文件夹
+directoryperdb=true
+
+#不启动认证
+noauth=true
+#启动认证
+#auth=true
+
+#启用日志选项，MongoDB的数据操作将会写入到journal文件夹的文件里
+#journal=true
+
+#在收到客户数据，检查的有效性
+objcheck=true
+
+#0：关闭，不收集任何数据。1：收集慢查询数据，默认是100毫秒。2：收集所有数据
+profile=2
+slowms=100
+smallfiles=true
+noprealloc=true
+
+#禁止HTTP状态接口
+nohttpinterface=true
+#禁止REST接口-在生产环境下建议不要启用MongoDB的REST接口
+rest=false
+
